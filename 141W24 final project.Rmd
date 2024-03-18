@@ -12,13 +12,15 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ##Abstract##
 
-This study focuses on developing a predictive model to determine the feedback type (success or failure) in each trial of a behavioral experiment involving mice, conducted by Steinmetz et al. (2019). Utilizing R and data processing techniques, we analyzed neural activity data (spike trains) alongside the given visual stimuli (left and right contrasts). The project's complexity necessitated a three-part approach: exploratory data analysis to understand data features and structures, data integration to merge information across trials and sessions, and predictive modeling to forecast trial outcomes. The model's performance was planned to be evaluated on two separate test sets from specific sessions. Our comprehensive approach demonstrated the capability of statistical models in interpreting complex neurological datasets.
+In this Research, the main focuses is on developing a predictive model to  ascertain trial outcomes: feedback type (success or failure(1 or 0)) in each trial in a behavioral experiment involving in mice, conducted by Steinmetz et al. (2019). Using R code and data processing techniques, we will analyzed neural activity data (spike trains) along with the given visual stimulus (left and right contrasts). The project's will be done in three-part approach: 1)Exploratory data analysis to understand data features and structures.
+2)Data integration to merge information across trials and sessions
+3)Predictive modeling to forecast trial outcomes.
+
+The idea is to evaluate the model's performance using two distinct test sets derived from specific sessions. This approach underscores our commitment to demonstrating the efficacy of statistical models in analyzing and interpreting complex neurological data
 
 ##Section 1: Introduction ##
 
-The overall goal of this research was to build a reliable predictive model to determine trial outcomes based on neural activity data, as part of a behavioral study involving mice. Steinmetz et al. (2019) conducted the foundational experiments, where the visual cortex's neural spikes were recorded as mice responded to visual stimuli. In our project, which falls within the domain of computational neuroscience and data science, aimed to decipher these complex biological signals into meaningful predictive insights.
-
-The data set contrains information on the following:
+The data set contains information on the following:
 
 feedback_type: type of the feedback, 1 for success and -1 for failure
 contrast_left: contrast of the left stimulus
@@ -27,20 +29,22 @@ time: centers of the time bins for spks
 spks: numbers of spikes of neurons in the visual cortex in time bins defined in time
 brain_area: area of the brain where each neuron lives
 
+
+This research aimed to build a reliable predictive model to determine trial outcomes based on neural activity data, as part of a behavioral study involving mice. To do so, we are going to break it into three parts.
+
 To do our research, the methodology was divided into three steps:
 
-1.Exploratory Data Analysis: We delved into the datasets from 18 sessions, examining variables such as the number of neurons, trial counts, stimuli conditions, and feedback types. This phase involved extensive data visualization and statistical analysis to understand underlying patterns and relationships in the neural activity during each trial.
+1. Exploratory Data Analysis: First we will examine variables such as the number of neurons, trial counts, stimulus conditions, and feedback types. This phase involved extensive data visualization and statistical analysis to understand underlying patterns and relationships in the neural activity during each trial.
 
-2.Data Integration: Leveraging the insights from the exploratory phase, we developed a strategy to integrate data across sessions. This process involved normalizing the spike data, consolidating trial information, and ensuring that the dataset was uniform and comprehensive, paving the way for accurate predictive modeling.
+2. Data Integration: We developed integrated data across sessions. This process involved normalizing the spike data, consolidating trial information, and ensuring that the dataset was uniform and comprehensive, paving the way for accurate predictive modeling.
 
-3.Predictive Modeling and Evaluation: The final stage focused on constructing a predictive model using techniques like logistic regression. We planned to use two separate test sets from distinct sessions to validate our model's effectiveness, ensuring its robustness and reliability.
+3. Predictive Modeling and Evaluation: The final stage focused on constructing a predictive model using techniques like logistic regression. We planned to use two separate test sets from distinct sessions to validate our model's effectiveness, ensuring its robustness and reliability.
 
 
 
 ##Section 2: Exploratory analysis##
 
-First we going to exploratory our dataset. Our dataset encompasses 18 sessions, each of which documents the neural activity of mice exposed to varying visual stimuli. For each session, we meticulously catalog the number of distinct neurons monitored, the totality of trials conducted, the unique combinations of stimulus contrasts presented to the left and right visual fields, and the distribution of feedback types indicating success or failure. This detailed structuring of our data lays the groundwork for a nuanced analysis, enabling us to dissect and understand the intricate patterns of neural activity in response to the trials.
-`
+First, we will conduct an exploratory analysis of our dataset, which comprises 18 sessions. Each session methodically documents the neural activity of mice in response to a variety of visual stimuli. We will carefully catalog each session's key aspects: the number of unique neurons, the total number of trials conducted, the diverse combinations of stimulus contrasts in the left and right visual fields, and the distribution of feedback types, classified as either success or failure. This detailed organization of our data provides a solid foundation for a thorough and nuanced analysis, enabling us to intricately examine and comprehend the patterns of neural activity elicited by the trials
 
 
 ```{r}
@@ -184,7 +188,8 @@ average_spikes_per_trial <- lapply(sessions, function(session) {
 
 ```
 
-The activity of specific neurons across trials provides insight into the roles these neurons may play in processing stimuli and in making decisions. Neurons that show a correlation between their activity levels and trial outcomes could be key features in your predictive model.
+The graph shows the first 5 Neurons in decision 1. It shows us that the Neurons could play a role in the stimulus when making decisions. It shows some correlation between the mic activity and trail. This can be a key feature when creating the predictive model.
+
 
 
 
@@ -244,7 +249,7 @@ ggplot(spike_change_df, aes(x = Session)) +
 
 ```
 
-The comparing neural activity at the beginning and end of sessions offers a longitudinal perspective on how neural responses evolve within a session. This is critical in predicting outcomes as it can help identify if trial outcomes are influenced by time-dependent factors such as learning or fatigue, which are fundamental aspects to consider in your modeling strateg
+The graph shows the comparison of the neural activity at the beginning and the end of sessions, showing how neural responses evolve within a session. This is critical in predicting outcomes as it can help identify if trial outcomes are influenced by time-dependent factors such as learning or fatigue, which are fundamental aspects to consider in the predication modeling strateg
 
 ```{r}
 #part 1-3
@@ -273,7 +278,7 @@ ggplot(mouse_summary, aes(x = Trial, y = TotalSpikes, color = as.factor(Session)
 
 This graph is faceted by mouse, showing the total spikes per trial for each of the four mice across the 18 sessions. Again, each line color represents a different session, and the x-axis and y-axis represent the trial number and total spikes, respectively. Notable points include:
 
-The activity levels, as represented by the total spike count, appear to differ not only between sessions but also between mice. For example, the mouse represented in the top right (Frossmann) shows higher spike counts across sessions compared to the others. There is substantial variability within sessions for each mouse, as observed by the oscillation of lines in each panel.The bottom right panel for Lederberg shows a particularly distinctive pattern, with sessions 9 and 11 demonstrating a much higher spike count compared to others.
+The activity levels, as represented by the total spike count, appear to differ not only between sessions but also between mice. For example, the mouse represented in the top right (Frossmann) shows higher spike counts across sessions compared to the others. There is substantial variability within sessions for each mouse, as observed by the oscillation of lines in each panel. The bottom right panel for Lederberg shows a particularly distinctive pattern, with sessions 9 and 11 demonstrating a much higher spike count compared to others.
 
 ```{r}
 # Extract the mouse name and average spike count for each session
@@ -423,12 +428,9 @@ In the initial model evaluation, we observe a list of log loss values for each r
 
 The overall accuracy of the model on the test data is approximately 69.59%, which is the percentage of times the model correctly predicted the feedback type. The confusion matrix provides a more detailed breakdown of predictions, showing that the model predicted 52 trials as failures correctly and 655 trials as successes correctly, while it incorrectly predicted 64 trials as successes and 245 as failures.
 
-The area under the ROC curve (AUROC) is a performance measurement for classification problems at various threshold settings. The AUROC for the test data is around 0.6495, where a value of 1 represents a perfect model and 0.5 represents a no-skill classifier.
+Under the ROC curve (AUROC) is the performance measurement for classification problems at various threshold settings. The AUROC for the test data is around 0.6495, where a value of 1 represents a perfect model and 0.5 represents a no-skill classifier.
 
-In the subsequent model testing on a random selection of 100 trials from session 9, the accuracy was about 82%, indicating that the model performed well on this specific subset. The confusion matrix shows that in session 9, the model predicted 69 successes and 13 failures. The AUROC of 0.824 suggests that the model has a good discriminative ability to differentiate between the two feedback types for this session.
-
-The results show the model's capability in generalizing and predicting unseen data, and the AUROC confirms that the predictions are reliable to a certain extent. However, considering the full spectrum of performance metrics is important for a comprehensive understanding of the model's predictive power.
-
+In the model testing on the random selection of 100 trials from session 9, the accuracy was about 82%, indicating that the model performed well on this subset. The confusion matrix shows that in session 9, the model predicted 69 successes and 13 failures. The AUROC of 0.824 suggests that the model has a good ability to differentiate between the two feedback types for this session.
 
 ##Test Data##
 ```{r}
