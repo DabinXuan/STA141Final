@@ -1,0 +1,483 @@
+---
+title: "STA141W24 Final Project"
+author: "Dabin Xuan"
+date: "2024-03-11"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+##Abstract##
+
+This study focuses on developing a predictive model to determine the feedback type (success or failure) in each trial of a behavioral experiment involving mice, conducted by Steinmetz et al. (2019). Utilizing R and data processing techniques, we analyzed neural activity data (spike trains) alongside the given visual stimuli (left and right contrasts). The project's complexity necessitated a three-part approach: exploratory data analysis to understand data features and structures, data integration to merge information across trials and sessions, and predictive modeling to forecast trial outcomes. The model's performance was planned to be evaluated on two separate test sets from specific sessions. Our comprehensive approach demonstrated the capability of statistical models in interpreting complex neurological datasets.
+
+##Section 1: Introduction ##
+
+The overall goal of this research was to build a reliable predictive model to determine trial outcomes based on neural activity data, as part of a behavioral study involving mice. Steinmetz et al. (2019) conducted the foundational experiments, where the visual cortex's neural spikes were recorded as mice responded to visual stimuli. In our project, which falls within the domain of computational neuroscience and data science, aimed to decipher these complex biological signals into meaningful predictive insights.
+
+The data set contrains information on the following:
+
+feedback_type: type of the feedback, 1 for success and -1 for failure
+contrast_left: contrast of the left stimulus
+contrast_right: contrast of the right stimulus
+time: centers of the time bins for spks
+spks: numbers of spikes of neurons in the visual cortex in time bins defined in time
+brain_area: area of the brain where each neuron lives
+
+To do our research, the methodology was divided into three steps:
+
+1.Exploratory Data Analysis: We delved into the datasets from 18 sessions, examining variables such as the number of neurons, trial counts, stimuli conditions, and feedback types. This phase involved extensive data visualization and statistical analysis to understand underlying patterns and relationships in the neural activity during each trial.
+
+2.Data Integration: Leveraging the insights from the exploratory phase, we developed a strategy to integrate data across sessions. This process involved normalizing the spike data, consolidating trial information, and ensuring that the dataset was uniform and comprehensive, paving the way for accurate predictive modeling.
+
+3.Predictive Modeling and Evaluation: The final stage focused on constructing a predictive model using techniques like logistic regression. We planned to use two separate test sets from distinct sessions to validate our model's effectiveness, ensuring its robustness and reliability.
+
+
+
+##Section 2: Exploratory analysis##
+
+First we going to exploratory our dataset. Our dataset encompasses 18 sessions, each of which documents the neural activity of mice exposed to varying visual stimuli. For each session, we meticulously catalog the number of distinct neurons monitored, the totality of trials conducted, the unique combinations of stimulus contrasts presented to the left and right visual fields, and the distribution of feedback types indicating success or failure. This detailed structuring of our data lays the groundwork for a nuanced analysis, enabling us to dissect and understand the intricate patterns of neural activity in response to the trials.
+`
+
+
+```{r}
+# Load the necessary libraries
+library(data.table)
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+library(caret)
+library(randomForest)
+library(tidyverse)
+library(caret)
+library(cluster)
+library(FactoMineR)
+library(factoextra)
+library(glmnet)
+library(Metrics)
+library(caret)
+library(xgboost)
+library(pROC)
+
+
+```
+
+
+```{r}
+# Predefine the path to the sessions
+path_to_sessions <- "F:/STA141W24/sessions/"
+
+# Load the session data
+sessions <- list()
+for(i in 1:18){
+  sessions[[i]] <- readRDS(paste0(path_to_sessions, 'session', i, '.rds'))
+}
+# Part 1: Exploratory Data Analysis
+
+trial_stats <- lapply(1:length(sessions), function(i) {
+  sapply(sessions[[i]]$spks, function(trial) {
+    sum(trial)  # Total number of spikes per trial
+  })
+})
+
+# Create a data frame for the combined statistics
+trial_stats_df <- data.frame(
+  Session = integer(),
+  Trial = integer(),
+  MouseName = character(),
+  TotalSpikes = integer()
+)
+
+# Loop over each session and combine the stats
+for (i in 1:length(trial_stats)) {
+  session_data <- data.frame(
+    Session = rep(i, length(trial_stats[[i]])),
+    Trial = 1:length(trial_stats[[i]]),
+    MouseName = rep(sessions[[i]]$mouse_name, length(trial_stats[[i]])),
+    TotalSpikes = trial_stats[[i]]
+  )
+  trial_stats_df <- rbind(trial_stats_df, session_data)
+}
+```
+
+```{r}
+session_summaries <- lapply(sessions, function(s) {
+  num_neurons = length(unique(s$brain_area))
+  num_trials = length(s$feedback_type)
+  unique_stimuli = length(unique(interaction(s$contrast_left, s$contrast_right)))
+  feedback_success = sum(s$feedback_type == 1)
+  feedback_failure = sum(s$feedback_type == -1)
+
+  data.frame(
+    NumNeurons = num_neurons,
+    NumTrials = num_trials,
+    UniqueStimuliConditions = unique_stimuli,
+    FeedbackTypeSuccess = feedback_success,
+    FeedbackTypeFailure = feedback_failure
+  )
+})
+
+# Combine summaries into one data frame
+session_info_df <- bind_rows(session_summaries)
+head(session_info_df)
+
+```
+
+A summary of the number of neurons, trials, stimuli conditions, and feedback for each session establishes a foundational understanding of the dataset's complexity. It provides essential context for the neural diversity and trial variability that your predictive models must account for. Such baseline data ensures that the models are built on a comprehensive understanding of the experimental setup, crucial for accurate prediction of outcomes.
+
+
+```{r}
+#part 2-2
+
+plot_spike_activity <- function(session, neuron_ids) {
+  spike_data <- data.frame(Trial = 1:length(session$spks))
+  for (id in neuron_ids) {
+    spike_counts <- sapply(session$spks, function(spikes) sum(spikes[id, ]))
+    spike_data[[paste("Neuron", id, sep = "_")]] <- spike_counts
+  }
+  melted_data <- melt(spike_data, id.vars = "Trial")
+  
+  ggplot(melted_data, aes(x = Trial, y = value, color = variable)) + 
+    geom_line() + 
+    theme_minimal() +
+    labs(x = "Trial", y = "Spike Count", title = "Neural Activity Across Trials", color = "Neuron ID")
+}
+
+# Example usage
+plot_spike_activity(sessions[[1]], c(1,2,3,4,5))  # For the 5 neurons in session 1
+
+session_summaries <- lapply(sessions, function(session) {
+  list(
+    number_of_neurons = length(unique(session$brain_area)),
+    number_of_trials = length(session$feedback_type),
+    unique_stimuli_conditions = list(
+      contrast_left = unique(session$contrast_left),
+      contrast_right = unique(session$contrast_right)
+    ),
+    feedback_types = table(session$feedback_type)
+  )
+})
+
+plot_spike_activity <- function(session, neuron_ids) {
+  spike_data <- lapply(neuron_ids, function(id) {
+    sapply(session$spks, function(spikes) sum(spikes[id, ]))
+  })
+  
+  data_to_plot <- data.frame(Trial = 1:length(session$spks), t(spike_data))
+  names(data_to_plot)[-1] <- paste("Neuron", neuron_ids, sep = "_")
+  
+  # Plotting
+  melt_data <- reshape2::melt(data_to_plot, id.vars = "Trial")
+  ggplot(melt_data, aes(x = Trial, y = value, color = variable)) + 
+    geom_line() + 
+    theme_minimal() +
+    labs(x = "Trial", y = "Spike Count", title = "Neural Activity Across Trials", color = "Neuron ID")
+}
+# For example, analyze if the average spike count changes across trials
+average_spikes_per_trial <- lapply(sessions, function(session) {
+  sapply(session$spks, function(trial) mean(trial))
+})
+
+
+```
+
+The activity of specific neurons across trials provides insight into the roles these neurons may play in processing stimuli and in making decisions. Neurons that show a correlation between their activity levels and trial outcomes could be key features in your predictive model.
+
+
+
+```{r}
+#part2- 3
+average_spikes_per_trial <- lapply(sessions, function(session) {
+  sapply(session$spks, function(trial) mean(trial))
+})
+
+# Convert the list to a data frame for ggplot
+average_spikes_df <- do.call(rbind, lapply(1:length(average_spikes_per_trial), function(i) {
+  data.frame(Session = i, Trial = 1:length(average_spikes_per_trial[[i]]), 
+             AverageSpikes = average_spikes_per_trial[[i]])
+}))
+
+# Plotting average spikes per trial for each session
+ggplot(average_spikes_df, aes(x = Trial, y = AverageSpikes, group = Session, color = as.factor(Session))) +
+  geom_line() +
+  labs(title = "Average Spike Count Across Trials for Each Session", x = "Trial", y = "Average Spike Count") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+The trends in this graph might reflect underlying processes such as neural adaptation or fatigue. If such trends correlate with trial outcomes, they can be incorporated into the model, potentially as features that account for time-dependent changes in neural behavior
+
+```{r}
+#part1-3
+# Calculate the mean spike count for the first and last quartiles of trials within each session
+spike_count_change_across_trials <- lapply(sessions, function(s) {
+  trials_first_quartile <- s$spks[1:(length(s$spks) / 4)]
+  trials_last_quartile <- s$spks[(3 * length(s$spks) / 4):length(s$spks)]
+  mean_first_quartile <- mean(unlist(lapply(trials_first_quartile, sum)))
+  mean_last_quartile <- mean(unlist(lapply(trials_last_quartile, sum)))
+  data.frame(
+    MeanSpikesFirstQuartile = mean_first_quartile,
+    MeanSpikesLastQuartile = mean_last_quartile
+  )
+})
+
+# Combine into a data frame
+spike_change_df <- bind_rows(spike_count_change_across_trials)
+print(spike_change_df)
+spike_change_df$Session <- seq_len(nrow(spike_change_df))
+
+# Plotting the mean spikes of the first vs last quartiles for each session
+ggplot(spike_change_df, aes(x = Session)) + 
+  geom_line(aes(y = MeanSpikesFirstQuartile, group = 1, colour = "First Quartile")) +
+  geom_line(aes(y = MeanSpikesLastQuartile, group = 1, colour = "Last Quartile")) +
+  labs(title = "Mean Spike Count: First vs. Last Quartile Across Sessions",
+       x = "Session",
+       y = "Mean Spike Count") +
+  scale_colour_manual("", 
+                      breaks = c("First Quartile", "Last Quartile"),
+                      values = c("blue", "red")) +
+  theme_minimal()
+
+```
+
+The comparing neural activity at the beginning and end of sessions offers a longitudinal perspective on how neural responses evolve within a session. This is critical in predicting outcomes as it can help identify if trial outcomes are influenced by time-dependent factors such as learning or fatigue, which are fundamental aspects to consider in your modeling strateg
+
+```{r}
+#part 1-3
+#plot the total spikes for each trial in each session
+ggplot(trial_stats_df, aes(x = Trial, y = TotalSpikes, group = Session, color = as.factor(Session))) +
+  geom_line() +
+  theme_minimal() +
+  labs(x = "Trial", y = "Total Spikes", color = "Session", title = "Total Spikes per Trial Across Sessions")
+```
+
+This graph depicts the variability in the total spike count per trial for each of the 18 sessions. Each line, represented by a different color, corresponds to a different session. The x-axis represents the trial number, and the y-axis represents the total number of spikes recorded in that trial. A few observations can be made, there is a clear variability in neural activity both within and across sessions. Some sessions exhibit higher overall spike counts compared to others. Within each session, the number of spikes per trial fluctuates, suggesting variability in neural response from trial to trial. This might be influenced by different stimulus conditions, mouse responses, or other experimental variables.
+
+```{r}
+#part1-4
+# To explore patterns specific to individual mice:
+mouse_summary <- aggregate(TotalSpikes ~ MouseName + Session + Trial, data = trial_stats_df, FUN = mean)
+
+# Plot the total spikes for each trial, faceted by mouse
+ggplot(mouse_summary, aes(x = Trial, y = TotalSpikes, color = as.factor(Session))) +
+  geom_line() +
+  facet_wrap(~MouseName, scales = 'free_y') +
+  theme_minimal() +
+  labs(x = "Trial", y = "Total Spikes", color = "Session", title = "Total Spikes per Trial by Mouse Across Sessions")
+
+```
+
+This graph is faceted by mouse, showing the total spikes per trial for each of the four mice across the 18 sessions. Again, each line color represents a different session, and the x-axis and y-axis represent the trial number and total spikes, respectively. Notable points include:
+
+The activity levels, as represented by the total spike count, appear to differ not only between sessions but also between mice. For example, the mouse represented in the top right (Frossmann) shows higher spike counts across sessions compared to the others. There is substantial variability within sessions for each mouse, as observed by the oscillation of lines in each panel.The bottom right panel for Lederberg shows a particularly distinctive pattern, with sessions 9 and 11 demonstrating a much higher spike count compared to others.
+
+```{r}
+# Extract the mouse name and average spike count for each session
+mousespike_data <- lapply(sessions, function(session) {
+  data.frame(MouseName = session$mouse_name, 
+             AverageSpikes = mean(unlist(lapply(session$spks, function(trial) mean(trial)))))
+})
+
+# Combine all sessions into a single data frame
+mousespike_df <- do.call(rbind, mousespike_data)
+
+# Calculate the average spike count for each mouse
+average_spike_count_permouse <- aggregate(AverageSpikes ~ MouseName, data = mousespike_df, FUN = mean)
+
+# Plotting average spikes per mouse
+ggplot(average_spike_count_permouse, aes(x = MouseName, y = AverageSpikes, fill = MouseName)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Spike Count Across Sessions for Each Mouse", x = "Mouse Name", y = "Average Spike Count") +
+  theme_minimal()
+
+```
+
+This bar chart again highlights the average neural activity per mouse and its implications for understanding consistent behavioral and neural response patterns. It points to the potential for developing mouse-specific models or for adjusting a global model to account for these individual differences.Also, this visualization emphasizes the differences in general neural activity levels between mice, reaffirming the importance of individual variability in the models. Recognizing that some mice may be more or less responsive on average is vital for personalizing the predictive models
+
+# Section 3: Data integration
+```{r}
+# Define a function to normalize spikes
+normalize_spikes <- function(spikes_matrix) {
+  t(apply(spikes_matrix, 1, function(x) (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)))
+}
+
+# Function to process and structure each session
+process_session <- function(session, session_id) {
+  # Create a container for trial data
+  trial_data_list <- vector("list", length(session$spks))
+
+  # Process each trial
+  for (i in seq_along(session$spks)) {
+    # Normalize spike data for the trial
+    normalized_spikes <- normalize_spikes(session$spks[[i]])
+    # Flatten the spike data to a single vector
+    flattened_spikes <- as.vector(normalized_spikes)
+    # Combine trial data into a data.table
+    trial_data_list[[i]] <- data.table(
+      SessionID = session_id,
+      Trial = i,
+      FeedbackType = session$feedback_type[i],
+      ContrastLeft = session$contrast_left[i],
+      ContrastRight = session$contrast_right[i],
+      Spikes = list(flattened_spikes)
+    )
+  }
+  # Combine all trials into a single data.table
+  return(rbindlist(trial_data_list, use.names = TRUE, fill = TRUE))
+}
+
+# Apply processing to each session and combine into a single data.table
+Final_sessions <- rbindlist(lapply(seq_along(sessions), function(i) {
+  process_session(sessions[[i]], i)
+}), use.names = TRUE, fill = TRUE)
+
+
+```
+
+
+```{r}
+ head(Final_sessions)
+```
+
+Now we have a structured data.table with 5081 observations and 6 variables. The Spikes column is a list, each element of which contains the flattened spike data for a trial
+
+
+
+
+##Section 4: Predictive modeling##
+
+
+```{r}
+# Split the data into training and testing sets
+set.seed(123) # For reproducibility
+trainIndex <- createDataPartition(Final_sessions$FeedbackType, p = .8, list = FALSE)
+train_data <- Final_sessions[trainIndex, ]
+test_data <- Final_sessions[-trainIndex, ]
+
+# Assuming the 'Spikes' column is a list of flattened spikes per trial,
+# Unlist the spikes and create a matrix for the training and test set
+train_spikes <- do.call(rbind, train_data$Spikes)
+test_spikes <- do.call(rbind, test_data$Spikes)
+
+# Convert FeedbackType to binary outcome (0 for failure, 1 for success)
+train_label <- ifelse(train_data$FeedbackType == 1, 1, 0)
+test_label <- ifelse(test_data$FeedbackType == 1, 1, 0)
+
+# Train xgboost model
+xgb_model <- xgboost(data = as.matrix(train_spikes), label = train_label, 
+                     objective = "binary:logistic", nrounds = 10)
+
+# Make predictions on the test set
+test_pred_prob <- predict(xgb_model, as.matrix(test_spikes))
+test_pred_label <- ifelse(test_pred_prob > 0.5, 1, 0)
+
+# Calculate accuracy
+accuracy <- mean(test_pred_label == test_label)
+print(accuracy)
+
+# Generate confusion matrix
+conf_matrix <- table(Predicted = test_pred_label, Actual = test_label)
+print(conf_matrix)
+
+# Compute AUROC
+roc_obj <- roc(test_label, test_pred_prob)
+auroc <- auc(roc_obj)
+print(auroc)
+
+# Now you can also prepare for the specific session tests.
+# For example, test on 100 random trials from session 9
+set.seed(123)
+session_9_rows <- which(Final_sessions$SessionID == 9)
+testIndex_session_9 <- sample(session_9_rows, 100, replace = FALSE)
+
+test_data_session_9 <- Final_sessions[testIndex_session_9, ]
+test_spikes_session_9 <- do.call(rbind, test_data_session_9$Spikes)
+test_label_session_9 <- ifelse(test_data_session_9$FeedbackType == 1, 1, 0)
+
+# Make predictions on session 9 test set
+test_pred_prob_session_9 <- predict(xgb_model, as.matrix(test_spikes_session_9))
+test_pred_label_session_9 <- ifelse(test_pred_prob_session_9 > 0.5, 1, 0)
+
+# Calculate accuracy for session 9
+accuracy_session_9 <- mean(test_pred_label_session_9 == test_label_session_9)
+print(accuracy_session_9)
+
+# Compute confusion matrix and AUROC for session 9
+conf_matrix_session_9 <- table(Predicted = test_pred_label_session_9, Actual = test_label_session_9)
+print(conf_matrix_session_9)
+
+roc_obj_session_9 <- roc(test_label_session_9, test_pred_prob_session_9)
+auroc_session_9 <- auc(roc_obj_session_9)
+print(auroc_session_9)
+
+
+
+```
+This output comes from a machine learning workflow where an XGBoost model has been trained to predict binary feedback types (success or failure) from neural spike data. The model was trained on 80% of the data and then tested on the remaining 20%.
+
+In the initial model evaluation, we observe a list of log loss values for each round of model training, which indicates the model’s performance in terms of how close the predicted probabilities are to the actual binary outcomes. A lower log loss value signifies better model performance. The progression shows that the model is improving with each round, as the log loss is decreasing.
+
+The overall accuracy of the model on the test data is approximately 69.59%, which is the percentage of times the model correctly predicted the feedback type. The confusion matrix provides a more detailed breakdown of predictions, showing that the model predicted 52 trials as failures correctly and 655 trials as successes correctly, while it incorrectly predicted 64 trials as successes and 245 as failures.
+
+The area under the ROC curve (AUROC) is a performance measurement for classification problems at various threshold settings. The AUROC for the test data is around 0.6495, where a value of 1 represents a perfect model and 0.5 represents a no-skill classifier.
+
+In the subsequent model testing on a random selection of 100 trials from session 9, the accuracy was about 82%, indicating that the model performed well on this specific subset. The confusion matrix shows that in session 9, the model predicted 69 successes and 13 failures. The AUROC of 0.824 suggests that the model has a good discriminative ability to differentiate between the two feedback types for this session.
+
+The results show the model's capability in generalizing and predicting unseen data, and the AUROC confirms that the predictions are reliable to a certain extent. However, considering the full spectrum of performance metrics is important for a comprehensive understanding of the model's predictive power.
+
+
+##Test Data##
+```{r}
+# Load test data
+test1 <- readRDS("F:/STA141W24/test1.rds")
+test2 <- readRDS("F:/STA141W24/test2.rds")
+
+# Function to preprocess and flatten spike data
+preprocess_data <- function(data) {
+  spikes_processed <- lapply(data$spks, function(spikes) {
+    spikes_normalized <- t(apply(spikes, 1, function(x) (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)))
+    return(as.vector(spikes_normalized))
+  })
+  return(data.frame(Spikes = I(spikes_processed), FeedbackType = data$feedback_type))
+}
+
+# Process the test datasets
+test1_processed <- preprocess_data(test1)
+test2_processed <- preprocess_data(test2)
+
+# Convert spike data to matrix format
+test1_matrix <- do.call(rbind, test1_processed$Spikes)
+test2_matrix <- do.call(rbind, test2_processed$Spikes)
+
+# Make predictions using the trained xgb_model
+predictions_test1 <- predict(xgb_model, newdata = test1_matrix, type = "response")
+predictions_test2 <- predict(xgb_model, newdata = test2_matrix, type = "response")
+
+# Convert predictions to binary class labels
+predicted_classes_test1 <- ifelse(predictions_test1 > 0.5, 1, -1)
+predicted_classes_test2 <- ifelse(predictions_test2 > 0.5, 1, -1)
+
+# Evaluate model performance
+evaluate_model <- function(predictions, actual) {
+  accuracy <- mean(predictions == actual)
+  confusion_matrix <- table(Predicted = predictions, Actual = actual)
+  auroc <- roc(actual, predictions)$auc
+  return(list(accuracy = accuracy, confusion_matrix = confusion_matrix, auroc = auroc))
+}
+
+# Evaluating performance on test1 and test2
+performance_test1 <- evaluate_model(predicted_classes_test1, test1_processed$FeedbackType)
+performance_test2 <- evaluate_model(predicted_classes_test2, test2_processed$FeedbackType)
+
+# Print results
+print(performance_test1)
+print(performance_test2)
+
+
+```
+
+
