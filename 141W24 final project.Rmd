@@ -43,9 +43,7 @@ To do our research, the methodology was divided into three steps:
 
 
 ##Section 2: Exploratory analysis##
-
-First, we will conduct an exploratory analysis of our dataset, which comprises 18 sessions. Each session methodically documents the neural activity of mice in response to a variety of visual stimuli. We will carefully catalog each session's key aspects: the number of unique neurons, the total number of trials conducted, the diverse combinations of stimulus contrasts in the left and right visual fields, and the distribution of feedback types, classified as either success or failure. This detailed organization of our data provides a solid foundation for a thorough and nuanced analysis, enabling us to intricately examine and comprehend the patterns of neural activity elicited by the trials
-
+First and foremost, we shall proceed with an exploratory analysis of our dataset, encompassing all 18 sessions. ⁤⁤Each session meticulously records mice’s neural reactions to numerous visual stimuli. ⁤⁤We distinctly tabulate the following information regarding each session: the amount of different neurons, the total number of trials performed, the varied proportion of multiple combinations of the stimulus contrast in the left and right visual fields, and the relative share of feedback successes and failures . ⁤⁤This close clustering of our data constitutes a basis for a comprehensive and multifaceted exploration, which may include detailed and subtle exploration of the differences and permutations of the mentioned variables.
 
 ```{r}
 # Load the necessary libraries
